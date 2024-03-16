@@ -16,13 +16,22 @@ from streaming_llm.enable_streaming_llm import enable_streaming_llm
 
 
 @torch.no_grad()
-def greedy_generate(model, tokenizer, input_ids, past_key_values, max_gen_len):
+def greedy_generate(model, tokenizer, input_ids, past_key_values, kv_cache, max_gen_len):
+    print("\n\n***********  SHAPE  *****************")
+    if past_key_values:
+        print(past_key_values[0][0].shape, "\n\n")
     outputs = model(
         input_ids=input_ids,
         past_key_values=past_key_values,
         use_cache=True,
     )
     past_key_values = outputs.past_key_values
+
+    # my code
+    if kv_cache:
+        past_key_values = kv_cache(past_key_values)
+    # my code
+
     pred_token_idx = outputs.logits[:, -1, :].argmax(dim=-1).unsqueeze(1)
     generated_ids = [pred_token_idx.item()]
     pos = 0
@@ -33,6 +42,12 @@ def greedy_generate(model, tokenizer, input_ids, past_key_values, max_gen_len):
             use_cache=True,
         )
         past_key_values = outputs.past_key_values
+
+        # my code
+        if kv_cache:
+            past_key_values = kv_cache(past_key_values)
+        # my code
+
         pred_token_idx = outputs.logits[:, -1, :].argmax(dim=-1).unsqueeze(1)
         generated_ids.append(pred_token_idx.item())
         generated_text = (
@@ -66,12 +81,12 @@ def streaming_inference(model, tokenizer, prompts, kv_cache=None, max_gen_len=10
         input_ids = tokenizer(prompt, return_tensors="pt").input_ids
         input_ids = input_ids.to(model.device)
         seq_len = input_ids.shape[1]
-        if kv_cache is not None:
-            space_needed = seq_len + max_gen_len
-            past_key_values = kv_cache.evict_for_space(past_key_values, space_needed)
+        # if kv_cache is not None:
+        #     space_needed = seq_len + max_gen_len
+        #     past_key_values = kv_cache.evict_for_space(past_key_values, space_needed)
 
         past_key_values = greedy_generate(
-            model, tokenizer, input_ids, past_key_values, max_gen_len=max_gen_len
+            model, tokenizer, input_ids, past_key_values, kv_cache, max_gen_len=max_gen_len
         )
 
 
@@ -111,7 +126,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_name_or_path", type=str, default="lmsys/vicuna-13b-v1.3"
+        "--model_name_or_path", type=str, default="lmsys/vicuna-7b-v1.5"
     )
     parser.add_argument("--data_root", type=str, default="data/")
     parser.add_argument("--enable_streaming", action="store_true")
