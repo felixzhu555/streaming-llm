@@ -69,6 +69,10 @@ def greedy_generate(model, tokenizer, input_ids, past_key_values, kv_cache, max_
         if pred_token_idx == tokenizer.eos_token_id:
             break
     print(" ".join(generated_text[pos:]), flush=True)
+
+    # print("\n************** END SHAPE ********************")
+    # if past_key_values:
+    #     print(past_key_values[0][0].shape, "\n\n")
     return past_key_values
 
 
@@ -131,7 +135,7 @@ if __name__ == "__main__":
     parser.add_argument("--data_root", type=str, default="data/")
     parser.add_argument("--enable_streaming", action="store_true")
     parser.add_argument("--start_size", type=int, default=4)
-    parser.add_argument("--recent_size", type=int, default=2000)
+    parser.add_argument("--recent_size", type=int, default=4096)
     args = parser.parse_args()
 
     main(args)

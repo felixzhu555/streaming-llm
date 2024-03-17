@@ -14,6 +14,7 @@ from transformers.models.llama.modeling_llama import (
     repeat_kv,
 )
 import types
+import inspect
 
 __all__ = ["enable_llama_pos_shift_attention"]
 
@@ -86,13 +87,13 @@ def llama_pos_shift_attention_forward(
     https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L359
     """
     
+    '''This is from HF v4.33'''
     kv_seq_len = key_states.shape[-2]
     if past_key_value is not None:
         kv_seq_len += past_key_value[0].shape[-2]
     
-    '''TODO figure out what seq_len does in this function
-    HF: cos, sin = self.rotary_emb(value_states, position_ids)'''
-    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+    '''HF latest: cos, sin = self.rotary_emb(value_states, position_ids)'''
+    cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len) # seq_len is from HF v4.33
     
     ### Shift Pos: query pos is min(cache_size, idx)
     # query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
@@ -101,14 +102,13 @@ def llama_pos_shift_attention_forward(
 
     if past_key_value is not None:
         # reuse k, v, self_attention
-        """ HF:
+        key_states = torch.cat([past_key_value[0], key_states], dim=2)
+        value_states = torch.cat([past_key_value[1], value_states], dim=2)
+        """ HF latest: (past_key_val is a Cache object)
         cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
         key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
         """
-        key_states = torch.cat([past_key_value[0], key_states], dim=2)
-        value_states = torch.cat([past_key_value[1], value_states], dim=2)
 
-    '''Not in HF'''
     past_key_value = (key_states, value_states) if use_cache else None
 
     '''Not in HF'''
@@ -116,6 +116,10 @@ def llama_pos_shift_attention_forward(
     key_position_ids = torch.arange(kv_seq_len, device=position_ids.device).unsqueeze(0)
     key_states = apply_rotary_pos_emb_single(key_states, cos, sin, key_position_ids)
     ###
+
+
+    '''Rest is exact same as HF v4.33
+    https://github.com/huggingface/transformers/blob/5a4f340df74b42b594aedf60199eea95cdb9bed0/src/transformers/models/llama/modeling_llama.py'''
 
     # repeat k/v heads if n_kv_heads < n_heads
     key_states = repeat_kv(key_states, self.num_key_value_groups)
@@ -142,12 +146,7 @@ def llama_pos_shift_attention_forward(
     attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(
         query_states.dtype
     )
-    '''HF has an extra dropout layer?
-    attn_weights = nn.functional.dropout(attn_weights, p=self.attention_dropout, training=self.training)'''
     attn_output = torch.matmul(attn_weights, value_states)
-
-    
-    '''Rest is exact same as HF'''
     
     if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
         raise ValueError(

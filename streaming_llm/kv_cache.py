@@ -67,6 +67,7 @@ class StartRecentKVCache:
         if past_key_values is None:
             return None
         seq_len = past_key_values[0][0].size(self.k_seq_dim)
+        print(f"\n\nEVICT for space: seq_len={seq_len}, num_coming={num_coming}\n")
         if seq_len + num_coming <= self.cache_size:
             return past_key_values
         return [
